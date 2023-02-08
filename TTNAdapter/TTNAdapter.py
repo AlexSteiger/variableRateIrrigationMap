@@ -4,7 +4,7 @@ import json
 import requests
 import pandas as pd
 import datetime
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 #run the first time only to create the table:
 
@@ -14,7 +14,7 @@ from sqlalchemy import create_engine
 
 # Postgres:
 postgreSQLTable = ['ru_soil_moisture','bursa_soil_moisture','ugent_soil_moisture']
-alchemyEngine   = create_engine('postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/addferti_lorawan', pool_recycle=3600);
+alchemyEngine   = create_engine('postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/postgres', pool_recycle=3600);
                 # create_engine(dialect+driver://username:password@host:port/database)
 
 # TTN Application:
@@ -28,7 +28,7 @@ for i in range(0,3):
     # Note the path you have to specify. Double note that it has be prefixed with up.
     theFields = "up.uplink_message.decoded_payload,up.uplink_message.locations"
 
-    theNumberOfRecords = 100
+    theNumberOfRecords = 1000
 
     theURL = "https://eu1.cloud.thethings.network/api/v3/as/applications/" + theApplication[i] + "/packages/storage/uplink_message?order=-received_at&limit=" + str(theNumberOfRecords) + "&field_mask=" + theFields
 
@@ -95,27 +95,29 @@ for i in range(0,3):
         TTN_df             = TTN_df[TTN_df['soil_temp'] != 0]
         TTN_df.lat         = TTN_df.lat.round(8)
         TTN_df.long        = TTN_df.long.round(8)
-        
+
         #print(TTN_df.dtypes)
-        #print("Fetched data: ")
-        #print(TTN_df)
+        print("Fetched data: ")
+        print(TTN_df)
+
 
         try:
-            postgreSQLConnection = alchemyEngine.connect();
-            TTN_df.to_sql(postgreSQLTable[i], postgreSQLConnection, index=False, if_exists='append');
+	    # append new data
+            TTN_df.to_sql(postgreSQLTable[i], alchemyEngine, index=False, if_exists='append');
+            print("append sucessfull")
+            # delete duplicate rows in db
             SQL = ("DELETE FROM %s t WHERE EXISTS (SELECT FROM %s WHERE device_id = t.device_id " 
                    "AND time = t.time AND ctid < t.ctid "
                    "order by time);")%(postgreSQLTable[i],postgreSQLTable[i])
-            postgreSQLConnection.execute(SQL)
-            
+            with alchemyEngine.connect() as con:
+              con.execute(text(SQL))
+              con.commit()
         except TypeError:
-            print("create table", postgreSQLTable[i])
-            TTN_df.to_sql(postgreSQLTable[i], postgreSQLConnection, index=False, if_exists='fail');
+            print("trying to create table", postgreSQLTable[i])
+            TTN_df.to_sql(postgreSQLTable[i], alchemyEngine, index=False, if_exists='fail');
+            print("created table:", postgreSQLTable[i])
 
     except ValueError:
         print("Value Error. No Data from TTN to fetch for " + postgreSQLTable[i])
         pass
-    
-    finally:
-        postgreSQLConnection.close();
 

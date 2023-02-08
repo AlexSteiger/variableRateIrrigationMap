@@ -15,7 +15,7 @@ import os
 ## Also the Layer and the Store need to be created once (execute )
 for i in range(0,3):
     postgreSQLTable = ['ru_soil_moisture','bursa_soil_moisture','ugent_soil_moisture']
-    alchemyEngine   = create_engine('postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/addferti_lorawan', pool_recycle=3600);
+    alchemyEngine   = create_engine('postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/lorawan', pool_recycle=3600);
 
     SQL = ("SELECT DISTINCT ON (device_id) " 
            " device_id, time, soil_temp, soil_mc, soil_ec, lat, long "

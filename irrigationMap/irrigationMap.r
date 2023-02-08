@@ -21,7 +21,7 @@ for (i in university) {
     URL  <- paste(URL1,URL2,URL4,URL5,sep="")
     
     # Download the file.
-    curl_download(URL, handle = h, destfile = paste(filename,".geojson", sep= ""))
+   # curl_download(URL, handle = h, destfile = paste(filename,".geojson", sep= ""))
 
     # read the data using sf (simple feature = dataframe with geometry)
     sf.Field.Mask <- st_read(paste(filename,".geojson", sep= ""),quiet = TRUE)
@@ -30,7 +30,7 @@ for (i in university) {
     ## Download the Soil Moisture Data from the database
     #postgreSQLTable = ['ru_soil_moisture','bursa_soil_moisture','ugent_soil_moisture']
     postgreSQLTable = paste(i,"_soil_moisture",sep="")
-    dsn_database    = "addferti_lorawan"    # Postgres databasename
+    dsn_database    = "postgres"    # Postgres databasename
     dsn_hostname    = "127.0.0.1"  
     dsn_port        = "5432"                
     dsn_uid         = "postgres"            # Postgres username 
@@ -101,6 +101,8 @@ for (i in university) {
                                       proj4string = crs)
     
     # Reproject the crs of the fc.spdf to match the Field Mask
+    target <- epsg(sf.Field.Mask)
+    print(target)
     fc.spdf <- spTransform(fc.spdf, crs(sf.Field.Mask))
     
     ###################################################################
@@ -135,8 +137,9 @@ for (i in university) {
     sensor.idw <- gstat::idw(soil_mc ~ 1, sensor.spdf, newdata=grd, idp=2.0)
     
     # Convert to raster object then clip to field extend
-    msmc.raster.idw <- raster(sensor.idw)
-    msmc.raster.idw <- mask(msmc.raster.idw,sf.Field.Mask)
+	# vmc = volumetric moisture content [%]
+    vmc.raster.idw <- raster(sensor.idw)
+    vmc.raster.idw <- mask(vmc.raster.idw,sf.Field.Mask)
     
     ###################################################################
     ## Interpolate the Field Capacity
@@ -149,16 +152,17 @@ for (i in university) {
     
     ###################################################################
     ## Calculate the Irrigation need
-    # msmc.raster.idw : MSMC  [%] : Measured Sensor Moisture Content [%]
+    #  vmc.raster.idw :  vmc  [%] : Volumetric Moisture Content [%]
     #   fc.raster.idw :   FC [mm] : Field Capacity [mm]
-    # csmc.raster.idw : CSMC [mm] : Calculed Sensor Moisture Content [mm]
+    #  cmc.raster.idw :  cmc [mm] : Calculed Moisture Content for 300 mm root depth [mm]
     #   in.raster.idw :   IN [mm] : Irrigation Need [mm]
     
-    # CSMC[mm] = MSMC[%] * 300/100
-    csmc.raster.idw <- msmc.raster.idw * 300/100
+	
+    # cmc[mm] = vmc[%] * 300/100
+    cmc.raster.idw <- vmc.raster.idw * 300/100
     
-    # IN [mm] = FC [mm] * 0.9 - CSMC [mm]
-    in.raster.idw <- fc.raster.idw * 0.9 - csmc.raster.idw
+    # IN [mm] = FC [mm] * 0.9 - cmc [mm]
+    in.raster.idw <- fc.raster.idw * 0.9 - cmc.raster.idw
     
     ###################################################################
     # Plots
@@ -168,7 +172,7 @@ for (i in university) {
     pal3 <- colorRampPalette(c("white", "darkblue"))
     
     par(mfrow=c(2,2)) #Multiplot 2x2 Grid
-    plot(msmc.raster.idw, col = pal1(n=7), main = paste(i,"Measured Sensor Moisture [%]"))
+    plot(vmc.raster.idw, col = pal1(n=7), main = paste(i,"Volumetric moisture content [%]"))
     plot(sensor.spdf, add=TRUE)
     plot(fc.raster.idw, col = pal2(n=7), main=paste(i,"Field Capacity [mm]"))
     plot(fc.spdf, add=TRUE)
