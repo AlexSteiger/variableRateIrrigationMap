@@ -3,6 +3,7 @@ library(curl)
 library(sf)
 library(raster)
 library(gstat) # Use gstat's idw routine
+library(rgdal)
 library(jsonlite)
 
 university <- list("ru", "bursa", "ugent")
@@ -11,7 +12,7 @@ for (i in university) {
     ###################################################################
     ## Download the Field Mask from GeoNode
     h <- new_handle()
-    handle_setopt(h, VERBOSE = 1)         #libcurl doc: https://curl.se/libcurl/c/
+    handle_setopt(h, VERBOSE = 0)         #libcurl doc: https://curl.se/libcurl/c/
     handle_setopt(h, SSL_VERIFYPEER = 0)  # for insecure connections
     filename <- paste("field_boundaries_",i, sep = "")
     URL1 <- "https://geoportal.addferti.eu/geoserver/ows"
@@ -19,9 +20,9 @@ for (i in university) {
     URL4 <- filename
     URL5 <- "&outputFormat=json&srs=EPSG%3A32635"
     URL  <- paste(URL1,URL2,URL4,URL5,sep="")
-    
+    print(URL)
     # Download the file.
-   # curl_download(URL, handle = h, destfile = paste(filename,".geojson", sep= ""))
+    # curl_download(URL, handle = h, destfile = paste(filename,".geojson", sep= ""))
 
     # read the data using sf (simple feature = dataframe with geometry)
     sf.Field.Mask <- st_read(paste(filename,".geojson", sep= ""),quiet = TRUE)
@@ -66,6 +67,7 @@ for (i in university) {
     URL3 <- i
     URL4 <- "&search_fields=title"
     URL  <- paste(URL1,URL2,URL3,URL4, sep="")
+    print(URL)
     
     # Download the file.
     response <- curl_fetch_memory(URL, handle = h)
@@ -84,6 +86,7 @@ for (i in university) {
     URL2 <- documentID
     URL3 <- "/download"
     URL <- paste(URL1,URL2,URL3,sep="")
+    print(URL)
     
     # Download the file.
     curl_download(URL, handle = h, destfile = paste("fc_pwp_",i,".txt",sep=""))
@@ -95,16 +98,14 @@ for (i in university) {
     # Make a SpatialPointsDataFrame
     data    <- fc.df[ , c("VW_g_per_cm3", "FC_mm", "PWP_mm", "AW_mm")]
     coords  <- fc.df[ , c("long", "lat")]
-    crs     <- CRS("+init=epsg:4326") # => [+proj=longlat +datum=WGS84]
+    crs     <- CRS("+proj=longlat +datum=WGS84") # => [+proj=longlat +datum=WGS84]  
     fc.spdf <- SpatialPointsDataFrame(coords      = coords,
                                       data        = data, 
                                       proj4string = crs)
     
     # Reproject the crs of the fc.spdf to match the Field Mask
-    target <- epsg(sf.Field.Mask)
-    print(target)
-    fc.spdf <- spTransform(fc.spdf, crs(sf.Field.Mask))
-    
+    fc.spdf <-  spTransform(fc.spdf, crs(sf.Field.Mask))
+
     ###################################################################
     ## Interpolate the Measured Soil Moisture Content [%]
     # Make a SpatialPointsDataFrame
@@ -117,7 +118,8 @@ for (i in university) {
     
     # Reproject the crs of the sensor.spdf to match the Field Mask
     sensor.spdf <- spTransform(sensor.spdf, crs(sf.Field.Mask))
-    #summary(sensor_spdf)
+
+	#summary(sensor_spdf)
     
     # Create an empty grid using the extends of the Field Mask with Pixel Size 1 meter
     bbox <- st_bbox(sf.Field.Mask)
@@ -172,15 +174,28 @@ for (i in university) {
     pal3 <- colorRampPalette(c("white", "darkblue"))
     
     par(mfrow=c(2,2)) #Multiplot 2x2 Grid
-    plot(vmc.raster.idw, col = pal1(n=7), main = paste(i,"Volumetric moisture content [%]"))
+    plot(cmc.raster.idw, col = pal1(n=7), main = paste(i,"Soil moisture content [mm]"))
     plot(sensor.spdf, add=TRUE)
     plot(fc.raster.idw, col = pal2(n=7), main=paste(i,"Field Capacity [mm]"))
     plot(fc.spdf, add=TRUE)
     plot(in.raster.idw, main = paste(i,"Irrigation Need [mm]"), col = pal3(n=7))
     plot(sensor.spdf, add=TRUE)
-    
+	
     ###################################################################
     # Save the Application Map as a GeoTiff
+	folder <- paste("VRI_",i,"_application_map/",sep="")
     filename <- paste("VRI_",i,"_application_map",sep="")
-    writeRaster(in.raster.idw, filename, format = "GTiff", overwrite = TRUE)
+	pathAndName <- paste(folder ,filename,sep="")
+	       
+
+    # Create a new directory because if it does not exist
+    isExist <- file.exists(folder)
+    if (!isExist) {
+      dir.create(folder)
+    }
+	
+	in.spdf <- rasterToPolygons(in.raster.idw)
+	raster::shapefile(in.spdf, pathAndName, overwrite=TRUE)
+    #writeRaster(in.raster.idw, filename, format = "GTiff", overwrite = TRUE)
 }  
+
