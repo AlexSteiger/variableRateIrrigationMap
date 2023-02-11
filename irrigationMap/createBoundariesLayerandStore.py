@@ -6,7 +6,7 @@
 import requests
 name = ['field_boundaries_ru','field_boundaries_bursa','field_boundaries_ugent']
 url = 'https://geoportal.addferti.eu/geoserver/rest/workspaces/'
-folder = 'Field_Boundaries'
+folder = 'irrigationMapFiles/Field_Boundaries'
 
 for i in range(0,3):
     file = name[i] + '.zip'
@@ -23,6 +23,7 @@ for i in range(0,3):
             verify=False,
             auth=('admin', 'addferti')
         )
+        
         print(folder + '/current_' + file + ' uploaded' )
     except FileNotFoundError: 
         print(file + " file not found")

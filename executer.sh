@@ -15,3 +15,4 @@ cd ..
 #run irrigationMap
 cd irrigationMap/irrigationMapFiles
 Rscript ../irrigationMap.r
+cd ../..

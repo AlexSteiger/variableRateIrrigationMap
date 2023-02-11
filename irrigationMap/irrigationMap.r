@@ -22,14 +22,14 @@ for (i in university) {
     URL  <- paste(URL1,URL2,URL4,URL5,sep="")
     print(URL)
     # Download the file.
-    # curl_download(URL, handle = h, destfile = paste(filename,".geojson", sep= ""))
+    curl_download(URL, handle = h, destfile = paste(filename,".geojson", sep= ""))
 
     # read the data using sf (simple feature = dataframe with geometry)
     sf.Field.Mask <- st_read(paste(filename,".geojson", sep= ""),quiet = TRUE)
-    
+
     ###################################################################
     ## Download the Soil Moisture Data from the database
-    #postgreSQLTable = ['ru_soil_moisture','bursa_soil_moisture','ugent_soil_moisture']
+    #Tables = ['ru_soil_moisture','bursa_soil_moisture','ugent_soil_moisture']
     postgreSQLTable = paste(i,"_soil_moisture",sep="")
     dsn_database    = "postgres"    # Postgres databasename
     dsn_hostname    = "127.0.0.1"  
@@ -51,13 +51,33 @@ for (i in university) {
                 print(paste("Unable to connect to Database",i))
         })
     
-    ## Select the most current soil moisture data
+	## Select the most current soil moisture data
     SQL1 <- "SELECT DISTINCT ON (device_id) device_id, soil_temp, soil_mc, soil_ec, lat, long FROM"
     SQL2 <- postgreSQLTable
     SQL3 <- "ORDER BY device_id, time desc; " 
     SQL <- paste(SQL1, SQL2, SQL3)
+	
     sensor.df <- dbGetQuery(connec, SQL)
     print(sensor.df)
+	
+	###################################################################
+    ## Download the Rain Forecast data from the database
+    #WeatherTables = ['ru_weather','bursa_weather','ugent_weather']
+	postgreSQLTable = paste(i,"_weather",sep="")
+
+	
+    ## Select the most current soil moisture data
+    SQL1 <- "SELECT SUM(rain) FROM (SELECT rain FROM"
+    SQL2 <- postgreSQLTable
+    SQL3 <- "ORDER BY date DESC LIMIT 1) subquery; " 
+    SQL <- paste(SQL1, SQL2, SQL3)
+	print(SQL)
+	
+    rain <- dbGetQuery(connec, SQL)
+	rain[is.na(rain)] <- 0  # replace NA with 0 values
+	rain <- rain[ , ]  # convert dataframe to numeric
+	
+    print(paste(i, " rain: ", rain))
     
     ###################################################################
     # Download the Field Capacity Document from Geonode
@@ -118,10 +138,8 @@ for (i in university) {
     
     # Reproject the crs of the sensor.spdf to match the Field Mask
     sensor.spdf <- spTransform(sensor.spdf, crs(sf.Field.Mask))
-
-	#summary(sensor_spdf)
     
-    # Create an empty grid using the extends of the Field Mask with Pixel Size 1 meter
+    # Create an empty grid using the extends of the Field Mask with Pixel Size 5 meter
     bbox <- st_bbox(sf.Field.Mask)
     cell_size <- 5
     x <- seq(bbox$xmin, bbox$xmax, by=cell_size)
@@ -159,27 +177,29 @@ for (i in university) {
     #  cmc.raster.idw :  cmc [mm] : Calculed Moisture Content for 300 mm root depth [mm]
     #   in.raster.idw :   IN [mm] : Irrigation Need [mm]
     
-	
     # cmc[mm] = vmc[%] * 300/100
     cmc.raster.idw <- vmc.raster.idw * 300/100
     
     # IN [mm] = FC [mm] * 0.9 - cmc [mm]
-    in.raster.idw <- fc.raster.idw * 0.9 - cmc.raster.idw
+    in.raster.idw <- fc.raster.idw * 0.9 - cmc.raster.idw - rain
     
     ###################################################################
     # Plots
-    
     pal1 <- colorRampPalette(c("white", "blue"))
     pal2 <- colorRampPalette(c("white", "brown"))
     pal3 <- colorRampPalette(c("white", "darkblue"))
     
-    par(mfrow=c(2,2)) #Multiplot 2x2 Grid
+	#plot(sensor.spdf, col = pal1(n=7), main = paste(i,"Soil moisture content [%]"))
+	#text(sensor.spdf, labels = 'soil_mc', cex = 0.6, pos = 4)
+	
+	par(mfrow=c(2,2)) #Multiplot 2x2 Grid
+	plot(vmc.raster.idw, col = pal1(n=7), width = 3, main = paste(i,"Soil moisture content [%]"))
+    plot(sensor.spdf, add=TRUE)
     plot(cmc.raster.idw, col = pal1(n=7), main = paste(i,"Soil moisture content [mm]"))
     plot(sensor.spdf, add=TRUE)
     plot(fc.raster.idw, col = pal2(n=7), main=paste(i,"Field Capacity [mm]"))
     plot(fc.spdf, add=TRUE)
     plot(in.raster.idw, main = paste(i,"Irrigation Need [mm]"), col = pal3(n=7))
-    plot(sensor.spdf, add=TRUE)
 	
     ###################################################################
     # Save the Application Map as a GeoTiff
