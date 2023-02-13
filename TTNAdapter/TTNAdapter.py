@@ -10,7 +10,6 @@ from sqlalchemy import create_engine, text
 
 # Before running this script:
 # --pandas version >1.4.0 needs to be installed
-# --create postgresql database 'addferti_lorawan
 
 # Postgres:
 postgreSQLTable = ['ru_soil_moisture','bursa_soil_moisture','ugent_soil_moisture']

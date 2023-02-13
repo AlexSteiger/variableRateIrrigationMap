@@ -150,6 +150,18 @@ for (i in university) {
     gridded(grd)     <- TRUE  # Create SpatialPixel object
     fullgrid(grd)    <- TRUE  # Create SpatialGrid object
     
+	# Create an empty grid using the extends of the Field Mask with Pixel Size 5 meter
+    bbox <- st_bbox(sf.Field.Mask)
+    cell_size <- 10
+    x <- seq(bbox$xmin, bbox$xmax, by=cell_size)
+    y <- seq(bbox$ymin, bbox$ymax, by=cell_size)
+    grd10 <- expand.grid(x=x, y=y)
+    names(grd10)       <- c("X", "Y")
+    coordinates(grd10) <- c("X", "Y")
+    gridded(grd10)     <- TRUE  # Create SpatialPixel object
+    fullgrid(grd10)    <- TRUE  # Create SpatialGrid object
+	proj4string(grd10) <- proj4string(sensor.spdf)
+	
     # Add P's projection information to the empty grid
     proj4string(grd) <- proj4string(sensor.spdf)
     
@@ -170,36 +182,59 @@ for (i in university) {
     fc.raster.idw <- raster(fc.spdf.idw)
     fc.raster.idw <- mask(fc.raster.idw,sf.Field.Mask)
     
+	###################################################################
+    ## Interpolate the PWP
+    # IDW: Interpolate using a power value of 2 (idp=2.0)
+    pwp.spdf.idw <- gstat::idw(PWP_mm ~ 1, fc.spdf, newdata=grd, idp=2.0)
+    
+    # Convert to raster object then clip to field extend
+    pwp.raster.idw <- raster(pwp.spdf.idw)
+    pwp.raster.idw <- mask(pwp.raster.idw,sf.Field.Mask)
+		
     ###################################################################
     ## Calculate the Irrigation need
-    #  vmc.raster.idw :  vmc  [%] : Volumetric Moisture Content [%]
-    #   fc.raster.idw :   FC [mm] : Field Capacity [mm]
-    #  cmc.raster.idw :  cmc [mm] : Calculed Moisture Content for 300 mm root depth [mm]
-    #   in.raster.idw :   IN [mm] : Irrigation Need [mm]
+    #  vmc.raster.idw :   MC  [%]  : Volumetric Moisture Content [%]
+    #   mc.raster.idw :   MC  [mm] : Calculed Moisture Content for 300 mm root depth [mm]
+    #   fc.raster.idw :   FC  [mm] : Field Capacity [mm]
+    #  pwp.raster.idw :   Pwp [mm] : Field Capacity [mm]
+    #   aw.raster.idw :    AW [mm] : Available Water [mm]
+    #   in.raster.idw :   IN  [mm] : Irrigation Need [mm]
     
-    # cmc[mm] = vmc[%] * 300/100
-    cmc.raster.idw <- vmc.raster.idw * 300/100
+    # mc[mm] = vmc[%] * 300/100
+    mc.raster.idw <- vmc.raster.idw * 300/100
     
-    # IN [mm] = FC [mm] * 0.9 - cmc [mm]
-    in.raster.idw <- fc.raster.idw * 0.9 - cmc.raster.idw - rain
+    # IN [mm] = FC [mm] * 0.9 - MC [mm]
+    in.raster.idw <- fc.raster.idw * 0.9 - mc.raster.idw - rain
+	
+	# AW [mm] = FC [mm] - PWP [mm]
+	aw.raster.idw <- fc.raster.idw - pwp.raster.idw
+	
+	# MAD [mm] = AW [mm] * 0.5 + PWP [mm]
+	mad.raster.idw <- aw.raster.idw * 0.5 + pwp.raster.idw
+	
+	# Water left until MAD = MC [mm] - MAD [mm]
+	wl.raster.idw = mc.raster.idw - mad.raster.idw
+	
     
     ###################################################################
     # Plots
     pal1 <- colorRampPalette(c("white", "blue"))
     pal2 <- colorRampPalette(c("white", "brown"))
     pal3 <- colorRampPalette(c("white", "darkblue"))
+	pal4 <- colorRampPalette(c("red", "blue"))
     
 	#plot(sensor.spdf, col = pal1(n=7), main = paste(i,"Soil moisture content [%]"))
 	#text(sensor.spdf, labels = 'soil_mc', cex = 0.6, pos = 4)
 	
 	par(mfrow=c(2,2)) #Multiplot 2x2 Grid
-	plot(vmc.raster.idw, col = pal1(n=7), width = 3, main = paste(i,"Soil moisture content [%]"))
+	plot(vmc.raster.idw, col = pal1(n=7), main = paste(i,"Soil moisture content [%]"))
     plot(sensor.spdf, add=TRUE)
-    plot(cmc.raster.idw, col = pal1(n=7), main = paste(i,"Soil moisture content [mm]"))
+    plot(mc.raster.idw, col = pal1(n=7), main = paste(i,"Soil moisture content [mm]"))
     plot(sensor.spdf, add=TRUE)
     plot(fc.raster.idw, col = pal2(n=7), main=paste(i,"Field Capacity [mm]"))
     plot(fc.spdf, add=TRUE)
     plot(in.raster.idw, main = paste(i,"Irrigation Need [mm]"), col = pal3(n=7))
+    plot(wl.raster.idw, main = paste(i,"Water left until MAD [mm]"), col = pal4(n=7))
 	
     ###################################################################
     # Save the Application Map as a GeoTiff
@@ -207,15 +242,24 @@ for (i in university) {
     filename <- paste("VRI_",i,"_application_map",sep="")
 	pathAndName <- paste(folder ,filename,sep="")
 	       
-
-    # Create a new directory because if it does not exist
+	## Export the Irrigation Map Shapefile
+    # Create a new directory if it does not exist
     isExist <- file.exists(folder)
     if (!isExist) {
       dir.create(folder)
     }
-	
 	in.spdf <- rasterToPolygons(in.raster.idw)
 	raster::shapefile(in.spdf, pathAndName, overwrite=TRUE)
     #writeRaster(in.raster.idw, filename, format = "GTiff", overwrite = TRUE)
-}  
+	
+	## Export "Water left until MAD" as a matrix:
+	wl.raster.idw <- aggregate(wl.raster.idw, fact=4) # aggregate fom 5x5 m to 
+	# Reproject to WGS84 + longlat
+	wl.raster.idw <- projectRaster(wl.raster.idw, crs="+proj=longlat +datum=WGS84")
+	# Transform Raster to Point matrix with format: "x, y, value"
+	wl.matrix.idw <- rasterToPoints(wl.raster.idw, spatial=FALSE)
+	colnames(wl.matrix.idw) <- c("x", "y", "wl")
+	filename <- paste("water_left_",i,".txt",sep="")
+	write.table(wl.matrix.idw, file = filename, sep = ",", row.names = FALSE, col.names = TRUE)
 
+}  

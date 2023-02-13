@@ -15,4 +15,6 @@ cd ..
 #run irrigationMap
 cd irrigationMap/irrigationMapFiles
 Rscript ../irrigationMap.r
+python3 ../postgresUploader.py
 cd ../..
+
