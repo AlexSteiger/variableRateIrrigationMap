@@ -22,8 +22,8 @@ base_url = "https://api.openweathermap.org/data/2.5/onecall?"
 
 postgreSQLTable = ["ru_weather","bursa_weather","ugent_weather"]
 
-lon = ["28.383499","12.079214","3.72784"]
-lat = ["40.137442","53.869024","50.99325"]
+lon = ["28.383499","12.079214","2.55874"]
+lat = ["40.137442","53.869024","51.02979"]
 
 for i in range(0, 3):
   print(postgreSQLTable[i])
@@ -50,7 +50,7 @@ for i in range(0, 3):
 
   # read the response (x) into a dataframe:
   df = pd.DataFrame(x['daily'])
-
+  
   # normalize nested 'temp' data:
   df_temp = pd.json_normalize(df['temp'])
 
@@ -59,7 +59,7 @@ for i in range(0, 3):
     df["rain"] = 0
 
   # subset of the dataframe:
-  df      = df[["dt","humidity","dew_point","wind_speed","clouds","rain"]]
+  df      = df[["dt","rain","humidity","dew_point","wind_speed","clouds","uvi"]]
   df_temp = df_temp['day']
 
   # concat the two dataframes horizontally:
@@ -74,9 +74,10 @@ for i in range(0, 3):
 
   # fill NaN with Null
   df = df.fillna(0)
-
+  
   # convert from unix time to python datetime:
   df['date'] = pd.to_datetime(df['date'],unit='s')
+  df['date'] = df['date'].dt.date
 
   #print(df.dtypes)
   print(df)
@@ -88,10 +89,11 @@ for i in range(0, 3):
 
   try:
     frame = df.to_sql(postgreSQLTable[i], alchemyEngine, index=False, if_exists='append')
-    print("append sucessfull")
-    SQL = ("DELETE FROM {} t WHERE EXISTS (SELECT FROM {} WHERE date = t.date AND ctid < t.ctid);"
+    print("append sucessfull") 
+    # Delete duplicates: (ctid > t.ctid -> delete original row ; ctid < t.ctid -> delete new row)
+    SQL = ("DELETE FROM {} t WHERE EXISTS (SELECT FROM {} WHERE date = t.date AND ctid > t.ctid);"
            .format(postgreSQLTable[i],postgreSQLTable[i]))
-    print(SQL)
+    #print(SQL)
     with alchemyEngine.connect() as con:
       con.execute(text(SQL))
       con.commit()
