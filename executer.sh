@@ -13,7 +13,7 @@ python3 currentSMC.py
 cd ..
 
 #run irrigationMap
-cd irrigationMap/irrigationMapFiles
+cd irrigationMap/outputFiles
 Rscript ../irrigationMap.r
 python3 ../postgresUploader.py
 cd ../..
