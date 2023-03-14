@@ -9,10 +9,11 @@ library(jsonlite)
 
 university <- list("ru", "bursa", "ugent")
 
-# The considered root depth in mm: 
-depth <- list("300","300","300")
+depth <- c(300,300,300)        # The considered root depth [mm]
+MAD_Setting <- c(0.6,0.6,0.6)  # The set Maximum allowable depletion [%]
+fill_up_rate <- c(0.9,0.9,0.9) # Irrigate until X % of field capacity
 
-for (i in 1:1) {
+for (i in 1:2) {
 	print(university[i])
     ###################################################################
     ## Download the Field Mask from GeoNode
@@ -118,7 +119,7 @@ for (i in 1:1) {
     sensor.spdf <- SpatialPointsDataFrame(coords      = coords,
                                           data        = data, 
                                           proj4string = crs)
-    
+
     # Reproject the crs of the sensor.spdf to match the Field Mask
     sensor.spdf <- spTransform(sensor.spdf, crs(sf.Field.Mask))
     
@@ -138,21 +139,26 @@ for (i in 1:1) {
     
     # IDW: Interpolate using a power value of 2 (idp=2.0)
     sensor.idw <- gstat::idw(soil_mc ~ 1, sensor.spdf, newdata=grd, idp=2.0)
-    
+
     # Convert to raster object then clip to field extend
 	# vmc = volumetric moisture content [%]
     vmc.raster.idw <- raster(sensor.idw)
+
     vmc.raster.idw <- mask(vmc.raster.idw,sf.Field.Mask)
-    
     ###################################################################	
-	## Calculate FielD Capacity and PWP in mm
-	#fc.spdf$FC_mm <- fc.spdf$FC * 3
-	
-    ###################################################################
-    ## Interpolate the Field Capacity and Permanent Wilting Point
-	
+	## Calculations
+
+	## Calculate FC_mm and PWP_mm
+	# FC [mm]  =  FC [%] * VW [g/cm3] * depth [mm] / 100
+	fc.spdf$FC_mm  <-  fc.spdf$FC * fc.spdf$VW_g_cm3 / 100 * depth[i]
+
+	# PWP [mm] = PWP [%] * VW [g/cm3] * depth [mm] / 100
+	fc.spdf$PWP_mm <-  fc.spdf$PWP * fc.spdf$VW_g_cm3 / 100 * depth[i]
+	print(fc.spdf)
+
+    ## Interpolate the Field Capacity
     # IDW: Interpolate using a power value of 2 (idp=2.0)
-    fc.spdf.idw <- gstat::idw(FC ~ 1, fc.spdf, newdata=grd, idp=2.0)
+    fc.spdf.idw <- gstat::idw(FC_mm ~ 1, fc.spdf, newdata=grd, idp=2.0)
     
     # Convert to raster object then clip to field extend
     fc.raster.idw <- raster(fc.spdf.idw)
@@ -160,44 +166,42 @@ for (i in 1:1) {
     
     ## Interpolate the PWP
     # IDW: Interpolate using a power value of 2 (idp=2.0)
-    pwp.spdf.idw <- gstat::idw(PWP ~ 1, fc.spdf, newdata=grd, idp=2.0)
+    pwp.spdf.idw <- gstat::idw(PWP_mm ~ 1, fc.spdf, newdata=grd, idp=2.0)
     
     # Convert to raster object then clip to field extend
     pwp.raster.idw <- raster(pwp.spdf.idw)
     pwp.raster.idw <- mask(pwp.raster.idw,sf.Field.Mask)
 		
-    ###################################################################
     ## Calculate the Irrigation need
     #  vmc.raster.idw :   MC  [%]  : Volumetric Moisture Content [%]
     #   mc.raster.idw :   MC  [mm] : Calculed Moisture Content for 300 mm root depth [mm]
     #   fc.raster.idw :   FC  [mm] : Field Capacity [mm]
     #  pwp.raster.idw :   PWP [mm] : Field Capacity [mm]
+    #
     #   aw.raster.idw :   AW  [mm] : Available Water [mm]
     #   in.raster.idw :   IN  [mm] : Irrigation Need [mm]
     
     # mc[mm] = vmc[%] * 300/100
-    mc.raster.idw <- vmc.raster.idw * 300/100
+    mc.raster.idw <- vmc.raster.idw / 100 * depth[i]
     
     # IN [mm] = FC [mm] * 0.9 - MC [mm]
-    in.raster.idw <- fc.raster.idw * 0.9 - mc.raster.idw - rain
+    in.raster.idw <- fc.raster.idw * fill_up_rate[i] - mc.raster.idw - rain
 	
 	# AW [mm] = FC [mm] - PWP [mm]
 	aw.raster.idw <- fc.raster.idw - pwp.raster.idw
 	
-	# MAD [mm] = AW [mm] * 0.5 + PWP [mm]
-	mad.raster.idw <- aw.raster.idw * 0.5 + pwp.raster.idw
+	# MAD [mm] = AW [mm] * MAD [%] + PWP [mm]
+	mad.raster.idw <- aw.raster.idw * MAD_Setting[i] + pwp.raster.idw
 	
 	# Water left until MAD = MC [mm] - MAD [mm]
 	wl.raster.idw = mc.raster.idw - mad.raster.idw
-	
     
     ###################################################################
     # Plots
     pal1 <- colorRampPalette(c("white", "blue"))
     pal2 <- colorRampPalette(c("white", "brown"))
-    pal3 <- colorRampPalette(c("brown", "white"))
-    pal4 <- colorRampPalette(c("white", "darkblue"))
-	pal5 <- colorRampPalette(c("red", "blue"))
+    pal3 <- colorRampPalette(c("white", "darkblue"))
+	pal4 <- colorRampPalette(c("red", "blue"))
 
 	par(mfrow=c(2,2)) #Multiplot 2x2 Grid
 	plot(vmc.raster.idw, col = pal1(n=7), main = paste(university[i],"Soil moisture content [%]"))
@@ -206,10 +210,10 @@ for (i in 1:1) {
     plot(sensor.spdf, add=TRUE)
     plot(fc.raster.idw, col = pal2(n=7), main=paste(university[i],"Field Capacity [mm]"))
     plot(fc.spdf, add=TRUE)
-    plot(pwp.raster.idw, col = pal3(n=7), main=paste(university[i],"Permanent Wilting Point [mm]"))
+    plot(pwp.raster.idw, col = pal2(n=7), main=paste(university[i],"Permanent Wilting Point [mm]"))
     plot(fc.spdf, add=TRUE)
-    plot(in.raster.idw, main = paste(university[i],"Irrigation Need [mm]"), col = pal4(n=7))
-    plot(wl.raster.idw, main = paste(university[i],"Water left until MAD [mm]"), col = pal5(n=7))
+    plot(in.raster.idw, main = paste(university[i],"Irrigation Need [mm]"), col = pal3(n=7))
+    plot(wl.raster.idw, main = paste(university[i],"Water left until MAD [mm]"), col = pal4(n=7))
 
     ###################################################################
     # Save the Application Map as a GeoTiff
@@ -236,5 +240,4 @@ for (i in 1:1) {
 	colnames(wl.matrix.idw) <- c("x", "y", "wl")
 	filename <- paste("water_left_",university[i],".txt",sep="")
 	write.table(wl.matrix.idw, file = filename, sep = ",", row.names = FALSE, col.names = TRUE)
-	print("here")
 }  
