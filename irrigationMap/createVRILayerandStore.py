@@ -4,12 +4,13 @@
 # Update Geonode with:
 # docker exec -it django4my_geonode python manage.py updatelayers
 import requests
+
 name = ['ru','bursa','ugent']
 url = 'https://geoportal.addferti.eu/geoserver/rest/workspaces/'
 
 for i in range(0,3):
     datastore = 'VRI_' + name[i] + '_application_map'
-    folder = 'irrigationMapFiles/VRI_' + name[i] + '_application_map' 
+    folder = 'outputFiles/VRI_' + name[i] + '_application_map' 
     try:
         with open(folder + '/' + datastore +'.zip', 'rb') as f:
             data = f.read()
@@ -23,4 +24,4 @@ for i in range(0,3):
         )
         print(folder + '/' + datastore + '.zip uploaded' )
     except FileNotFoundError: 
-        print(folder + '/' + datastore +'.zip')
+        print(folder + '/' + datastore +'.zip not found!!!')

@@ -12,6 +12,11 @@ cd currentSMC
 python3 currentSMC.py
 cd ..
 
+#run rainForecastAdapter
+cd rainForecastAdapter
+python3 openWeatherMapAPI.py
+cd ..
+
 #run irrigationMap
 cd irrigationMap/outputFiles
 Rscript ../irrigationMap.r

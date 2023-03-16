@@ -6,7 +6,7 @@
 import requests
 name = ['field_boundaries_ru','field_boundaries_bursa','field_boundaries_ugent']
 url = 'https://geoportal.addferti.eu/geoserver/rest/workspaces/'
-folder = 'irrigationMapFiles/Field_Boundaries'
+folder = 'outputFiles/Field_Boundaries'
 
 for i in range(0,3):
     file = name[i] + '.zip'

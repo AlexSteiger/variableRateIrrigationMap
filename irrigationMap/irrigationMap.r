@@ -3,7 +3,7 @@ library(curl)
 library(sf)	    # simple feature
 library(sp)		# Spatial (for e.g. SpatialPointsDataframe)
 library(raster)
-library(gstat)  # The algorithm uses gstat's idw routine
+library(gstat)  # The script uses gstat's idw routine
 library(rgdal)
 library(jsonlite)
 
@@ -51,12 +51,9 @@ for (i in 1:2) {
 
     # read the data using sf (simple feature = dataframe with geometry)
     sf.fc <- st_read(paste(filename,".geojson", sep= ""),quiet = TRUE)
-	
 	print(sf.fc)
-	
 	# Transform the sf into a SpatialPointsDataFrame:
 	fc.spdf <- as(sf.fc, "Spatial")
-
 	# Reproject the crs of the fc.spdf to match the Field Mask
     fc.spdf <-  spTransform(fc.spdf, crs(sf.Field.Mask))
 	
@@ -88,7 +85,6 @@ for (i in 1:2) {
     SQL2 <- postgreSQLTable
     SQL3 <- "ORDER BY device_id, time desc; " 
     SQL <- paste(SQL1, SQL2, SQL3)
-	
     sensor.df <- dbGetQuery(connec, SQL)
     print(sensor.df)
 	
@@ -96,18 +92,15 @@ for (i in 1:2) {
     ## Download the Rain Forecast data from the database
     #WeatherTables = ['ru_weather','bursa_weather','ugent_weather']
 	postgreSQLTable = paste(university[i],"_weather",sep="")
-	
     ## Select the most current soil moisture data
     SQL1 <- "SELECT SUM(rain) FROM (SELECT rain FROM"
     SQL2 <- postgreSQLTable
     SQL3 <- "ORDER BY date DESC LIMIT 1) subquery; " 
     SQL <- paste(SQL1, SQL2, SQL3)
 	print(SQL)
-	
     rain <- dbGetQuery(connec, SQL)
 	rain[is.na(rain)] <- 0  # replace NA with 0 values
 	rain <- rain[ , ]  # convert dataframe to numeric
-	
     print(paste(university[i], " rain: ", rain))
     
     ###################################################################
@@ -119,10 +112,8 @@ for (i in 1:2) {
     sensor.spdf <- SpatialPointsDataFrame(coords      = coords,
                                           data        = data, 
                                           proj4string = crs)
-
     # Reproject the crs of the sensor.spdf to match the Field Mask
     sensor.spdf <- spTransform(sensor.spdf, crs(sf.Field.Mask))
-    
     # Create an empty grid using the extends of the Field Mask with Pixel Size 5 meter
     bbox <- st_bbox(sf.Field.Mask)
     cell_size <- 5
@@ -133,7 +124,6 @@ for (i in 1:2) {
     coordinates(grd) <- c("X", "Y")
     gridded(grd)     <- TRUE  # Create SpatialPixel object
     fullgrid(grd)    <- TRUE  # Create SpatialGrid object
-	
     # Add P's projection information to the empty grid
     proj4string(grd) <- proj4string(sensor.spdf)
     
@@ -154,7 +144,6 @@ for (i in 1:2) {
 
 	# PWP [mm] = PWP [%] * VW [g/cm3] * depth [mm] / 100
 	fc.spdf$PWP_mm <-  fc.spdf$PWP * fc.spdf$VW_g_cm3 / 100 * depth[i]
-	print(fc.spdf)
 
     ## Interpolate the Field Capacity
     # IDW: Interpolate using a power value of 2 (idp=2.0)
@@ -177,7 +166,6 @@ for (i in 1:2) {
     #   mc.raster.idw :   MC  [mm] : Calculed Moisture Content for 300 mm root depth [mm]
     #   fc.raster.idw :   FC  [mm] : Field Capacity [mm]
     #  pwp.raster.idw :   PWP [mm] : Field Capacity [mm]
-    #
     #   aw.raster.idw :   AW  [mm] : Available Water [mm]
     #   in.raster.idw :   IN  [mm] : Irrigation Need [mm]
     
@@ -202,7 +190,6 @@ for (i in 1:2) {
     pal2 <- colorRampPalette(c("white", "brown"))
     pal3 <- colorRampPalette(c("white", "darkblue"))
 	pal4 <- colorRampPalette(c("red", "blue"))
-
 	par(mfrow=c(2,2)) #Multiplot 2x2 Grid
 	plot(vmc.raster.idw, col = pal1(n=7), main = paste(university[i],"Soil moisture content [%]"))
     plot(sensor.spdf, add=TRUE)
